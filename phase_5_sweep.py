@@ -44,7 +44,16 @@ except ImportError:
     _MORPH_FILTERS_AVAILABLE = False
     print("WARNING: morphology_filters.py not found — morph columns will be empty. "
           "Copy morphology_filters.py to the same directory as phase_5_sweep.py.")
+os.chdir(r'C:\Users\14358\.spyder-py3')
+print(f"Working directory set to: {os.getcwd()}")
 
+# Change these at the top of phase_5_sweep.py:
+CHECKPOINT_CSV      = r'C:\Users\14358\.spyder-py3\tess_checkpoint.csv'
+OUT_TOP_CSV         = r'C:\Users\14358\.spyder-py3\tess_top_scores.csv'
+OUT_SHORTLIST_CSV   = r'C:\Users\14358\.spyder-py3\tess_candidates_086.csv'
+OUT_HIGH_CSV        = r'C:\Users\14358\.spyder-py3\tess_candidates_0895.csv'
+RUN_SUMMARY_CSV     = r'C:\Users\14358\.spyder-py3\tess_run_summary.csv'
+SECTOR_PROGRESS_JSON = r'C:\Users\14358\.spyder-py3\sector_progress.json'
 
 # =============================================================================
 # Config
@@ -83,6 +92,9 @@ BLS_OVERSAMPLE = 5
 BLS_PERIOD_MIN = 0.05   # days (1.2 hr) — captures USPs
 BLS_N_PERIODS  = 3000   # denser grid helps when going short
 
+MIN_BLS_DEPTH_SIGMA = 0.5   # minimum transit depth in sigma units
+                             # rejects noise-fold candidates before CNN scoring
+
 # Candidate write thresholds (synced in main() from JSON)
 WRITE_SHORTLIST_SCORE = DEFAULT_INFERENCE_CFG["candidate_threshold"]
 WRITE_HIGH_SCORE = DEFAULT_INFERENCE_CFG["high_confidence_threshold"]
@@ -105,12 +117,12 @@ USE_TEST_TARGETS = False
 
 SECTOR_PROGRESS_JSON = "sector_progress.json"
 SECTOR_START = 1
-SECTOR_END = 200          # set high; code keeps going
-SECTORS_PER_BATCH = 5     # search multiple sectors per batch
-TARGETS_PER_SECTOR = 800  # cap per sector harvested
+SECTOR_END = 500          # set high; code keeps going
+SECTORS_PER_BATCH = 1     # search multiple sectors per batch
+TARGETS_PER_SECTOR = 200  # cap per sector harvested
 EMPTY_SECTOR_STOP = 999999  # effectively never stop for empties
 
-MAX_WALLTIME_HOURS = 24
+MAX_WALLTIME_HOURS = 12
 
 # Filters on MAST rows (safe defaults)
 HARVEST_AUTHOR_WHITELIST = ["SPOC"]   # [] to allow all
@@ -138,7 +150,7 @@ HARVEST_TMAG_MAX = None
 #    BENCHMARK_CONFIRMED = False
 #    USE_TEST_TARGETS    = False   (or True for quick smoke-test)
 # ══════════════════════════════════════════════════════════
-BENCHMARK_CONFIRMED = True            # True => run benchmark instead of sector sweep
+BENCHMARK_CONFIRMED = False            # True => run benchmark instead of sector sweep
 BENCHMARK_LIMIT = 2000
 BENCHMARK_OUT_CSV = "tess_benchmark_confirmed.csv"
 BENCHMARK_TESS_ONLY = False           # FIX: default False to avoid 0-row filter
@@ -877,8 +889,13 @@ def score_target_topk(
     valid_indices: List[int] = []
     windows_z: List[np.ndarray] = []
     w_raws: List[np.ndarray] = []
+    
+    MIN_BLS_DEPTH = 0.50   # ← ADD THIS in the config section near the top (around line 48)
 
     for j, (period, t0, dur, depth, power) in enumerate(cands):
+        
+        if abs(float(depth)) < MIN_BLS_DEPTH:
+            continue                          # noise-fold artifact, skip before CNN
         w = fold_and_center_window(time_rs, dflux, float(period), float(t0), window_len=WINDOW_LEN)
         if len(w) != WINDOW_LEN:
             continue
